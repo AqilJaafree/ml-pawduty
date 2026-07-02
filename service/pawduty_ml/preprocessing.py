@@ -25,19 +25,20 @@ class NoBodyDetectedError(Exception):
     """Raised when no plausible cat body region can be isolated in a thermal image."""
 
 
-def mask_overlay_regions(image: np.ndarray) -> np.ndarray:
-    masked = image.copy()
-    masked[:, OVERLAY_RIGHT_X:] = 0
-    masked[LABEL_BOTTOM_LEFT_Y:, :LABEL_BOTTOM_LEFT_X] = 0
-    return masked
-
-
-def _overlay_valid_region_mask(shape: tuple) -> np.ndarray:
-    """Boolean mask, True everywhere except the overlay regions blanked by mask_overlay_regions."""
+def _overlay_valid_region_mask(shape: tuple[int, int]) -> np.ndarray:
+    """Boolean mask, True everywhere except the overlay regions (color-bar/badge
+    strip and bottom-left C-label) that mask_overlay_regions blanks out."""
     valid = np.ones(shape, dtype=bool)
     valid[:, OVERLAY_RIGHT_X:] = False
     valid[LABEL_BOTTOM_LEFT_Y:, :LABEL_BOTTOM_LEFT_X] = False
     return valid
+
+
+def mask_overlay_regions(image: np.ndarray) -> np.ndarray:
+    valid = _overlay_valid_region_mask(image.shape[:2])
+    masked = image.copy()
+    masked[~valid] = 0
+    return masked
 
 
 def isolate_body_mask(image: np.ndarray) -> np.ndarray:
@@ -50,11 +51,15 @@ def isolate_body_mask(image: np.ndarray) -> np.ndarray:
     # (it degenerates to thresholding at 0, marking every non-zero pixel as
     # foreground). Guard against that degenerate case explicitly: without
     # real thermal contrast there is no body to isolate.
-    if float(valid_pixels.std()) < MIN_VALID_STD:
+    valid_std = float(valid_pixels.std())
+    if valid_std < MIN_VALID_STD:
         raise NoBodyDetectedError(
-            f"insufficient thermal contrast (std={float(valid_pixels.std()):.2f}) to isolate a body"
+            f"insufficient thermal contrast (std={valid_std:.2f}) to isolate a body"
         )
 
+    # Reshape to a column vector (Nx1) rather than passing the full 2D frame:
+    # cv2.threshold needs an image-shaped array, and this keeps Otsu's
+    # histogram computation restricted to the valid (non-overlay) pixels only.
     thresh_val, _ = cv2.threshold(
         valid_pixels.reshape(-1, 1), 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
     )
