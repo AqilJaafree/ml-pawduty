@@ -4,7 +4,13 @@ import cv2
 import numpy as np
 import pytest
 
-from pawduty_ml.preprocessing import NoBodyDetectedError, isolate_body_mask, mask_overlay_regions
+from pawduty_ml.preprocessing import (
+    NoBodyDetectedError,
+    extract_temperature_features,
+    features_to_vector,
+    isolate_body_mask,
+    mask_overlay_regions,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -40,3 +46,40 @@ def test_isolate_body_mask_rejects_uniformly_bright_image() -> None:
 
     with pytest.raises(NoBodyDetectedError):
         isolate_body_mask(image)
+
+
+def test_extract_temperature_features_on_real_indoor_fixture() -> None:
+    features = extract_temperature_features(FIXTURES / "healthy_indoor.jpg")
+
+    assert features.minimum <= features.average <= features.maximum
+    assert features.minimum <= features.mode <= features.maximum
+    # Cat thermal images in this dataset range roughly 10-40 C; a wide sanity band,
+    # not a precision check (OCR/colormap accuracy is validated visually, not asserted).
+    assert -10 < features.minimum
+    assert features.maximum < 60
+
+
+def test_extract_temperature_features_falls_back_when_ocr_is_unavailable(monkeypatch) -> None:
+    import pytesseract
+
+    def _broken_ocr(*args, **kwargs):
+        raise RuntimeError("tesseract is not installed")
+
+    monkeypatch.setattr(pytesseract, "image_to_string", _broken_ocr)
+
+    features = extract_temperature_features(FIXTURES / "healthy_indoor.jpg")
+
+    assert features.calibrated is False
+    assert 0.0 <= features.minimum <= features.maximum <= 1.0
+
+
+def test_features_to_vector_matches_dataclass_order() -> None:
+    features = extract_temperature_features(FIXTURES / "healthy_outdoor_day.jpg")
+
+    vector = features_to_vector(features)
+
+    assert vector.shape == (4,)
+    assert vector[0] == features.average
+    assert vector[1] == features.minimum
+    assert vector[2] == features.maximum
+    assert vector[3] == features.mode
