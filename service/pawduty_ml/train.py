@@ -5,7 +5,7 @@ import joblib
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score
-from sklearn.model_selection import GroupShuffleSplit
+from sklearn.model_selection import GroupKFold
 from sklearn.preprocessing import StandardScaler
 
 from pawduty_ml.dataset import DEFAULT_DATASET_ROOT, iter_thermal_images
@@ -34,31 +34,34 @@ def build_dataset(dataset_root: Path = DEFAULT_DATASET_ROOT) -> tuple[np.ndarray
     return np.array(features), np.array(labels), np.array(groups)
 
 
-def evaluate_model(
-    X: np.ndarray, y: np.ndarray, groups: np.ndarray, test_size: float = 0.2, random_state: int = 42
-) -> dict[str, float]:
-    splitter = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
-    train_idx, test_idx = next(splitter.split(X, y, groups))
+def evaluate_model(X: np.ndarray, y: np.ndarray, groups: np.ndarray, n_splits: int = 5) -> dict[str, float]:
+    # Cross-validate across cats (GroupKFold) so a single unlucky train/test draw
+    # can't misreport the model. A single held-out split is high-variance on this
+    # dataset; averaging over folds gives a metric that actually reflects the model.
+    effective_splits = max(2, min(n_splits, len(np.unique(groups))))
+    splitter = GroupKFold(n_splits=effective_splits)
 
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X[train_idx])
-    X_test = scaler.transform(X[test_idx])
-    y_train, y_test = y[train_idx], y[test_idx]
-
-    model = LogisticRegression()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-
-    tn, fp, fn, tp = confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel()
-    specificity = tn / (tn + fp) if (tn + fp) else 0.0
-
-    return {
-        "accuracy": accuracy_score(y_test, y_pred),
-        "precision": precision_score(y_test, y_pred, zero_division=0),
-        "recall": recall_score(y_test, y_pred, zero_division=0),
-        "f1": f1_score(y_test, y_pred, zero_division=0),
-        "specificity": specificity,
+    fold_metrics: dict[str, list[float]] = {
+        "accuracy": [], "precision": [], "recall": [], "f1": [], "specificity": []
     }
+    for train_idx, test_idx in splitter.split(X, y, groups):
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X[train_idx])
+        X_test = scaler.transform(X[test_idx])
+        y_train, y_test = y[train_idx], y[test_idx]
+
+        model = LogisticRegression(max_iter=1000)
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+
+        tn, fp, fn, tp = confusion_matrix(y_test, y_pred, labels=[0, 1]).ravel()
+        fold_metrics["accuracy"].append(accuracy_score(y_test, y_pred))
+        fold_metrics["precision"].append(precision_score(y_test, y_pred, zero_division=0))
+        fold_metrics["recall"].append(recall_score(y_test, y_pred, zero_division=0))
+        fold_metrics["f1"].append(f1_score(y_test, y_pred, zero_division=0))
+        fold_metrics["specificity"].append(tn / (tn + fp) if (tn + fp) else 0.0)
+
+    return {name: float(np.mean(values)) for name, values in fold_metrics.items()}
 
 
 def train_and_save(dataset_root: Path = DEFAULT_DATASET_ROOT, model_path: Path = MODEL_PATH) -> dict[str, float]:
