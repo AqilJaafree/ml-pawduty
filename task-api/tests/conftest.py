@@ -29,3 +29,12 @@ def empty_conn(temp_db):
     db.init_db(connection, seed=False)
     yield connection
     connection.close()
+
+
+@pytest.fixture
+def client(temp_db):
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    with TestClient(app) as test_client:
+        yield test_client
