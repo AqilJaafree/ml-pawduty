@@ -37,6 +37,19 @@ def test_task_create_rejects_bad_category():
         TaskCreate(title="x", category="food", petId="p1", date="2026-07-08")
 
 
+def test_task_update_rejects_blank_title():
+    with pytest.raises(ValidationError):
+        TaskUpdate(title="   ")
+
+
+def test_derive_initials_multiple_spaces():
+    assert derive_initials("John  Doe") == "JD"
+
+
+def test_derive_initials_leading_trailing_spaces():
+    assert derive_initials("  Alex Smith  ") == "AS"
+
+
 def test_task_update_all_optional():
     tu = TaskUpdate(done=True)
     dumped = tu.model_dump(exclude_unset=True)

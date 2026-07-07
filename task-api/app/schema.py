@@ -1,6 +1,6 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 Category = Literal["vaccination", "medicine", "grooming", "other"]
 Repeat = Literal["once", "daily", "weekly", "monthly"]
@@ -14,6 +14,15 @@ def derive_initials(name: str) -> str:
     return "".join(part[0] for part in name.split())[:2].upper()
 
 
+def _validate_title(v):
+    if v is None:
+        return v
+    stripped = v.strip()
+    if not stripped:
+        raise ValueError("title must not be blank")
+    return stripped
+
+
 class Assignee(BaseModel):
     name: str = ""
     initials: str = ""
@@ -24,7 +33,7 @@ class TaskCreate(BaseModel):
     category: Category
     petId: str
     date: str
-    assignee: Assignee = Assignee()
+    assignee: Assignee = Field(default_factory=Assignee)
     time: str = ""
     repeat: Repeat = "once"
     note: str = ""
@@ -33,9 +42,7 @@ class TaskCreate(BaseModel):
     @field_validator("title")
     @classmethod
     def _title_not_blank(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("title must not be blank")
-        return v.strip()
+        return _validate_title(v)
 
 
 class TaskUpdate(BaseModel):
@@ -51,10 +58,8 @@ class TaskUpdate(BaseModel):
 
     @field_validator("title")
     @classmethod
-    def _title_not_blank(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and not v.strip():
-            raise ValueError("title must not be blank")
-        return v.strip() if v is not None else v
+    def _title_not_blank(cls, v):
+        return _validate_title(v)
 
 
 class Task(BaseModel):
