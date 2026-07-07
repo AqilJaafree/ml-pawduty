@@ -70,3 +70,10 @@ def test_delete_then_404(client):
 
 def test_delete_missing_404(client):
     assert client.delete("/tasks/nope").status_code == 404
+
+
+def test_patch_assignee_derives_initials(client):
+    created = client.post("/tasks", json=_new_task_payload()).json()
+    r = client.patch(f"/tasks/{created['id']}", json={"assignee": {"name": "Bob Jones"}})
+    assert r.status_code == 200
+    assert r.json()["assignee"] == {"name": "Bob Jones", "initials": "BJ"}

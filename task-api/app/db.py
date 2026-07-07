@@ -83,7 +83,7 @@ def init_db(conn: sqlite3.Connection, seed: bool = True) -> None:
         return
 
     conn.executemany(
-        "INSERT INTO pets (id, name, species, breed, avatar_color) VALUES "
+        "INSERT OR IGNORE INTO pets (id, name, species, breed, avatar_color) VALUES "
         "(:id, :name, :species, :breed, :avatar_color)",
         SEED_PETS,
     )

@@ -29,3 +29,13 @@ def test_get_db_path_honours_env(temp_db):
     from app import db
 
     assert db.get_db_path() == temp_db
+
+
+def test_reseed_after_tasks_deleted_does_not_crash(conn):
+    from app import db
+
+    conn.execute("DELETE FROM tasks")
+    conn.commit()
+    db.init_db(conn, seed=True)  # tasks empty again → re-seeds; pets must not PK-conflict
+    assert conn.execute("SELECT COUNT(*) AS c FROM pets").fetchone()["c"] == 2
+    assert conn.execute("SELECT COUNT(*) AS c FROM tasks").fetchone()["c"] == 6
