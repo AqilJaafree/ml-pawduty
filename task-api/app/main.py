@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import db, repository
@@ -36,6 +36,12 @@ def get_conn():
         conn.close()
 
 
+def _fill_initials(assignee: dict) -> dict:
+    if assignee.get("name") and not assignee.get("initials"):
+        assignee["initials"] = derive_initials(assignee["name"])
+    return assignee
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -48,9 +54,7 @@ def list_tasks(conn=Depends(get_conn)):
 
 @app.post("/tasks", response_model=Task, status_code=201)
 def create_task(payload: TaskCreate, conn=Depends(get_conn)):
-    assignee = payload.assignee.model_dump()
-    if assignee["name"] and not assignee["initials"]:
-        assignee["initials"] = derive_initials(assignee["name"])
+    assignee = _fill_initials(payload.assignee.model_dump())
     task = {**payload.model_dump(), "id": uuid4().hex, "assignee": assignee}
     return repository.create_task(conn, task)
 
@@ -66,9 +70,8 @@ def get_task(task_id: str, conn=Depends(get_conn)):
 @app.patch("/tasks/{task_id}", response_model=Task)
 def update_task(task_id: str, payload: TaskUpdate, conn=Depends(get_conn)):
     fields = payload.model_dump(exclude_unset=True)
-    assignee = fields.get("assignee")
-    if assignee is not None and assignee.get("name") and not assignee.get("initials"):
-        assignee["initials"] = derive_initials(assignee["name"])
+    if fields.get("assignee") is not None:
+        _fill_initials(fields["assignee"])
     updated = repository.update_task(conn, task_id, fields)
     if updated is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -79,7 +82,7 @@ def update_task(task_id: str, payload: TaskUpdate, conn=Depends(get_conn)):
 def delete_task(task_id: str, conn=Depends(get_conn)):
     if not repository.delete_task(conn, task_id):
         raise HTTPException(status_code=404, detail="Task not found")
-    return Response(status_code=204)
+    return None
 
 
 @app.get("/pets", response_model=list[Pet])
