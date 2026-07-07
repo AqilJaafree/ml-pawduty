@@ -2,12 +2,21 @@ import tempfile
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 from api.schema import ScanResponse
 from pawduty_ml.model import load_model, predict
 from pawduty_ml.preprocessing import NoBodyDetectedError, extract_temperature_features, features_to_vector
 
 app = FastAPI(title="Pawduty Cat Thermal Health Worker")
+
+# Open CORS so the browser-based web client can call /scan cross-origin (dev/demo).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 def get_model():
