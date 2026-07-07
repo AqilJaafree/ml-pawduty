@@ -35,6 +35,15 @@ async def scan(image: UploadFile = File(...), model_bundle=Depends(get_model)) -
             features = extract_temperature_features(Path(tmp.name))
         except NoBodyDetectedError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+        except Exception as exc:  # noqa: BLE001 - any decode/processing failure
+            # Return a clean 4xx (which keeps CORS headers, unlike an unhandled
+            # 500) so the browser can read the message instead of reporting the
+            # service as unreachable. The model needs a thermal (INFERNO-colormap)
+            # frame with °C badges — a normal photo lands here.
+            raise HTTPException(
+                status_code=422,
+                detail="Could not read a thermal image from that photo. Use a thermal (INFERNO-colormapped) frame with the temperature badges.",
+            ) from exc
 
     vector = features_to_vector(features)
     result = predict(vector, scaler, model)

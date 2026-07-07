@@ -48,3 +48,16 @@ def test_scan_returns_422_for_an_image_with_no_detectable_body() -> None:
     response = client.post("/scan", files={"image": ("blank.jpg", blank_file, "image/jpeg")})
 
     assert response.status_code == 422
+
+
+def test_scan_returns_422_for_an_undecodable_upload() -> None:
+    import io
+
+    # Not a real image — the pipeline can't decode it. Must be a clean 422
+    # (never an unhandled 500, which would ship without CORS headers).
+    junk = io.BytesIO(b"this is not an image")
+
+    response = client.post("/scan", files={"image": ("junk.jpg", junk, "image/jpeg")})
+
+    assert response.status_code == 422
+    assert "detail" in response.json()
